@@ -1,0 +1,8 @@
+FROM ubuntu:jammy
+WORKDIR /app
+COPY mysterycmd /app/mysterycmd
+RUN apt-get update && \
+    apt-get install -y figlet lolcat
+
+ENV PATH=/usr/games:$PATH
+CMD ["bash", "mysterycmd"]

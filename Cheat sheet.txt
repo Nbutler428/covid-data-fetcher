@@ -1,0 +1,26 @@
+docker run -d --name covid_pg --env-file vars.env -p 5432:5432 postgres
+
+cd /mnt/c/Users/Public/data503-data/docker
+
+
+truncate -s 0 fetch_data.sh
+
+
+docker network create covid_network
+
+docker stop covid_pg
+docker rm covid_pg
+
+docker run -d --name covid_pg --env-file vars.env --network covid_network -p 5432:5432 postgres
+docker ps
+docker run --rm --env-file vars.env --network covid_network web2db
+
+
+./start_all.sh
+
+
+./start_all.sh "2022-12-24T00:00:00.000"
+
+
+chmod +x setup.sh
+./setup.sh
