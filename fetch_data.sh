@@ -1,39 +1,35 @@
 #!/bin/sh
 
+set -e
 
 START_DATE=${1:-"2020-01-01T00:00:00.000"}
 
-echo "📡 Fetching COVID-19 data from NYC API after $START_DATE..."
+# ENV VARS required: DATABASE_URL, SITE_URL, TABLE_NAME
+if [ -z "$DATABASE_URL" ] || [ -z "$SITE_URL" ] || [ -z "$TABLE_NAME" ]; then
+  echo "❌ Missing required environment variables: DATABASE_URL, SITE_URL, TABLE_NAME"
+  exit 1
+fi
 
+echo "📡 Fetching COVID-19 data from $SITE_URL after $START_DATE..."
 
-API_URL="https://data.cityofnewyork.us/resource/rc75-m7u3.json?\$where=date_of_interest>'$START_DATE'&\$limit=1000"
-
+API_URL="${SITE_URL}?\$where=date_of_interest>'$START_DATE'&\$limit=1000"
 
 curl -s "$API_URL" | jq '.' > /app/covid_data.json
 echo "✅ JSON data saved to covid_data.json"
 
-
 CSV_FILE="/app/covid_data.csv"
 
-
-if [ ! -f "$CSV_FILE" ]; then
-    echo "📝 Creating new CSV file with headers..."
-    HEADERS=$(jq -r 'map(keys) | add | unique | @csv' /app/covid_data.json)
-    echo "$HEADERS" > "$CSV_FILE"
-fi
-
-
-echo "➕ Appending new data to CSV..."
+echo "📝 Converting JSON to CSV..."
+HEADERS=$(jq -r 'map(keys) | add | unique | @csv' /app/covid_data.json)
+echo "$HEADERS" > "$CSV_FILE"
 cat /app/covid_data.json | jq -r 'map([.[] // "NULL"])[] | @csv' >> "$CSV_FILE"
-echo "✅ Data successfully appended to covid_data.csv"
+echo "✅ Data saved to covid_data.csv"
 
+echo "📥 Importing data into PostgreSQL..."
 
-if [ -n "$POSTGRES_HOST" ]; then
-    echo "📥 Attempting to import data into Postgres at $POSTGRES_HOST..."
-
-
-    cat <<EOF > /app/import.sql
-CREATE TABLE IF NOT EXISTS covid_data (
+# Create temp import.sql
+cat <<EOF > /app/import.sql
+CREATE TABLE IF NOT EXISTS $TABLE_NAME (
     date_of_interest TEXT,
     case_count TEXT,
     probable_case_count TEXT,
@@ -91,19 +87,13 @@ CREATE TABLE IF NOT EXISTS covid_data (
     incomplete TEXT
 );
 
-COPY covid_data FROM STDIN WITH CSV HEADER;
+COPY $TABLE_NAME FROM STDIN WITH CSV HEADER;
 EOF
 
+echo "🔗 Connecting to Postgres via DATABASE_URL..."
 
+echo "🔐 Using psql to import..."
+PGPASSWORD=$(echo "$DATABASE_URL" | sed -E 's/.*:([^:@]+)@.*/\1/') \
+psql "$DATABASE_URL" -f /app/import.sql < "$CSV_FILE"
 
-    PGPASSWORD=$POSTGRES_PASSWORD psql \
-        -h "$POSTGRES_HOST" \
-        -U "$POSTGRES_USER" \
-        -d "$POSTGRES_DB" \
-        -p "${POSTGRES_PORT:-5432}" \
-        -f /app/import.sql < "$CSV_FILE"
-
-    echo "✅ Data successfully imported to Postgres!"
-else
-    echo "⚠️  No database credentials found. Skipping database import."
-fi
+echo "✅ Import complete!"
