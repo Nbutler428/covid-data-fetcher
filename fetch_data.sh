@@ -2,51 +2,48 @@
 
 set -e
 
-# Default start date if not passed
-START_DATE=${1:-"2020-01-01T00:00:00.000"}
-
-# Check environment variables
-if [ -z "$DATABASE_URL" ] || [ -z "$SITE_URL" ] || [ -z "$TABLE_NAME" ]; then
-  echo "❌ Missing required environment variables: DATABASE_URL, SITE_URL, TABLE_NAME"
+# Required environment variables
+if [ -z "$DATABASE_URL" ]; then
+  echo "❌ DATABASE_URL is required"
   exit 1
 fi
 
-echo "📡 Downloading COVID-19 data from NYC API..."
+# Static values
+SITE_URL="https://data.cityofnewyork.us/resource/rc75-m7u3.json"
+START_DATE=${1:-"2020-01-01T00:00:00.000"}
+TABLE_NAME="covid_data"
 
-# Fetch JSON from API
+# Fetch data
+echo "📡 Fetching data from NYC API..."
 curl -s "${SITE_URL}?\$where=date_of_interest>'$START_DATE'&\$limit=1000" > /app/data.json
 
-echo "✅ JSON data saved."
+# Convert to CSV
+echo "📝 Converting to CSV..."
+echo "date_of_interest,case_count,probable_case_count,hospitalized_count,death_count" > /app/data.csv
+jq -r '.[] | [
+  .date_of_interest,
+  .case_count,
+  .probable_case_count,
+  .hospitalized_count,
+  .death_count
+] | @csv' /app/data.json >> /app/data.csv
 
-# Extract CSV headers from JSON
-HEADERS=$(jq -r 'map(keys) | add | unique | join(",")' /app/data.json)
-echo "$HEADERS" > /app/data.csv
-
-# Write rows aligned with the headers
-jq -r --arg header "$HEADERS" '
-  $header | split(",") as $cols |
-  map([.[ $cols[] ] // "NULL"])[] | @csv
-' /app/data.json >> /app/data.csv
-
-echo "✅ CSV created with headers:"
-echo "$HEADERS"
-echo "📊 $(tail -n +2 /app/data.csv | wc -l) data rows"
-
-# Generate CREATE TABLE SQL with TEXT columns
-echo "📐 Generating SQL to create table: $TABLE_NAME"
-CREATE_SQL=$(echo "$HEADERS" | tr ',' '\n' | awk '{print $0 " TEXT,"}' | sed '$ s/,$//')
-
+# Create simple table
+echo "📐 Creating table..."
 cat <<EOF > /app/import.sql
 DROP TABLE IF EXISTS $TABLE_NAME;
 CREATE TABLE $TABLE_NAME (
-$CREATE_SQL
+  date_of_interest TEXT,
+  case_count TEXT,
+  probable_case_count TEXT,
+  hospitalized_count TEXT,
+  death_count TEXT
 );
-COPY $TABLE_NAME ($HEADERS)
-FROM STDIN WITH CSV HEADER;
+COPY $TABLE_NAME FROM STDIN WITH CSV HEADER;
 EOF
 
-# Run the SQL import
-echo "📥 Importing into PostgreSQL..."
+# Import to Postgres
+echo "📥 Importing into Postgres..."
 psql "$DATABASE_URL" -f /app/import.sql < /app/data.csv
 
 echo "✅ Done!"
