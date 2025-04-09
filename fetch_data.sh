@@ -28,6 +28,20 @@ cat /app/covid_data.json | jq -r 'map([.[] // "NULL"])[] | @csv' >> "$CSV_FILE"
 echo "✅ Data successfully appended to covid_data.csv"
 
 # 📥 Optional: Import CSV into Railway Postgres
+if [ -n "$DATABASE_URL" ]; then
+    echo "🔧 Parsing DATABASE_URL..."
+
+    # Extract parts of DATABASE_URL
+    proto="$(echo $DATABASE_URL | grep :// | sed -e's,^\(.*://\).*,\1,g')"
+    url="$(echo ${DATABASE_URL/$proto/})"
+    POSTGRES_USER="$(echo $url | cut -d@ -f1 | cut -d: -f1)"
+    POSTGRES_PASSWORD="$(echo $url | cut -d@ -f1 | cut -d: -f2)"
+    hostportdb="$(echo $url | cut -d@ -f2)"
+    POSTGRES_HOST="$(echo $hostportdb | cut -d: -f1)"
+    POSTGRES_PORT="$(echo $hostportdb | cut -d: -f2 | cut -d/ -f1)"
+    POSTGRES_DB="$(echo $hostportdb | cut -d/ -f2)"
+fi
+
 if [ -n "$POSTGRES_HOST" ]; then
     echo "📥 Attempting to import data into Postgres at $POSTGRES_HOST..."
 
