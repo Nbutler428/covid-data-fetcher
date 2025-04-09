@@ -15,7 +15,7 @@ echo "✅ JSON data saved to covid_data.json"
 
 CSV_FILE="/app/covid_data.csv"
 
-# Create CSV with headers if it doesn't exist
+
 if [ ! -f "$CSV_FILE" ]; then
     echo "📝 Creating new CSV file with headers..."
     HEADERS=$(jq -r 'map(keys) | add | unique | @csv' /app/covid_data.json)
