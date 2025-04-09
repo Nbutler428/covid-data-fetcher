@@ -148,7 +148,7 @@ COPY $TABLE_NAME (
     si_probable_case_count,
     si_probable_case_count_7day_avg
 ) FROM STDIN WITH CSV HEADER;
-EOF
+
 
 echo "🔐 Connecting to Postgres using DATABASE_URL..."
 psql "$DATABASE_URL" -f /app/import.sql < "$CSV_FILE"
