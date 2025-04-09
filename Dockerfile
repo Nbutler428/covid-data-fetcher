@@ -1,10 +1,12 @@
 FROM alpine:latest
 
-WORKDIR /app
-
 RUN apk add --no-cache curl jq postgresql-client
 
-COPY run.sh /app/run.sh
-RUN chmod +x /app/run.sh
+WORKDIR /app
 
-CMD ["./run.sh"]
+COPY fetch_data.sh .
+
+RUN chmod +x fetch_data.sh
+
+ENTRYPOINT ["sh", "/app/fetch_data.sh"]
+CMD ["2020-01-01T00:00:00.000"]
