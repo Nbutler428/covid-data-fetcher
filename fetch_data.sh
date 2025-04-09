@@ -4,7 +4,7 @@ set -e
 
 START_DATE=${1:-"2020-01-01T00:00:00.000"}
 
-# ENV VARS required: DATABASE_URL, SITE_URL, TABLE_NAME
+# Required ENV VARS
 if [ -z "$DATABASE_URL" ] || [ -z "$SITE_URL" ] || [ -z "$TABLE_NAME" ]; then
   echo "❌ Missing required environment variables: DATABASE_URL, SITE_URL, TABLE_NAME"
   exit 1
@@ -22,14 +22,18 @@ CSV_FILE="/app/covid_data.csv"
 echo "📝 Converting JSON to CSV..."
 HEADERS=$(jq -r 'map(keys) | add | unique | @csv' /app/covid_data.json)
 echo "$HEADERS" > "$CSV_FILE"
-cat /app/covid_data.json | jq -r 'map([.[] // "NULL"])[] | @csv' >> "$CSV_FILE"
+jq -r 'map([.[] // "NULL"])[] | @csv' /app/covid_data.json >> "$CSV_FILE"
 echo "✅ Data saved to covid_data.csv"
+
+echo "📄 CSV headers:"
+head -n 1 "$CSV_FILE"
 
 echo "📥 Importing data into PostgreSQL..."
 
-# Create temp import.sql
 cat <<EOF > /app/import.sql
-CREATE TABLE IF NOT EXISTS $TABLE_NAME (
+DROP TABLE IF EXISTS $TABLE_NAME;
+
+CREATE TABLE $TABLE_NAME (
     date_of_interest TEXT,
     case_count TEXT,
     probable_case_count TEXT,
@@ -90,10 +94,7 @@ CREATE TABLE IF NOT EXISTS $TABLE_NAME (
 COPY $TABLE_NAME FROM STDIN WITH CSV HEADER;
 EOF
 
-echo "🔗 Connecting to Postgres via DATABASE_URL..."
-
-echo "🔐 Using psql to import..."
-PGPASSWORD=$(echo "$DATABASE_URL" | sed -E 's/.*:([^:@]+)@.*/\1/') \
+echo "🔐 Connecting to Postgres using DATABASE_URL..."
 psql "$DATABASE_URL" -f /app/import.sql < "$CSV_FILE"
 
 echo "✅ Import complete!"
