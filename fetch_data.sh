@@ -1,48 +1,109 @@
 #!/bin/sh
 
-set -e
-
+# Set default start date if not provided
 START_DATE=${1:-"2020-01-01T00:00:00.000"}
-TABLE_NAME="covid_data"
 
-if [ -z "$DATABASE_URL" ]; then
-  echo "❌ DATABASE_URL is required"
-  exit 1
+echo "📡 Fetching COVID-19 data from NYC API after $START_DATE..."
+
+# API Endpoint with date filtering
+API_URL="https://data.cityofnewyork.us/resource/rc75-m7u3.json?\$where=date_of_interest>'$START_DATE'&\$limit=1000"
+
+# Fetch JSON data
+curl -s "$API_URL" | jq '.' > /app/covid_data.json
+echo "✅ JSON data saved to covid_data.json"
+
+# Set output CSV path
+CSV_FILE="/app/covid_data.csv"
+
+# Create CSV with headers if it doesn't exist
+if [ ! -f "$CSV_FILE" ]; then
+    echo "📝 Creating new CSV file with headers..."
+    HEADERS=$(jq -r 'map(keys) | add | unique | @csv' /app/covid_data.json)
+    echo "$HEADERS" > "$CSV_FILE"
 fi
 
-echo "📡 Fetching COVID data..."
-curl -s "https://data.cityofnewyork.us/resource/rc75-m7u3.json?\$where=date_of_interest>'$START_DATE'&\$limit=1000" > /app/data.json
-echo "✅ Got JSON"
+# Append new data to the CSV
+echo "➕ Appending new data to CSV..."
+cat /app/covid_data.json | jq -r 'map([.[] // "NULL"])[] | @csv' >> "$CSV_FILE"
+echo "✅ Data successfully appended to covid_data.csv"
 
-# Actual headers (cleaned and comma-separated)
-HEADERS="all_case_count_7day_avg,bk_all_case_count_7day_avg,bk_case_count,bk_case_count_7day_avg,bk_death_count,bk_death_count_7day_avg,bk_hospitalized_count,bk_hospitalized_count_7day_avg,bk_probable_case_count,bk_probable_case_count_7day_avg,bx_all_case_count_7day_avg,bx_case_count,bx_case_count_7day_avg,bx_death_count,bx_death_count_7day_avg,bx_hospitalized_count,bx_hospitalized_count_7day_avg,bx_probable_case_count,bx_probable_case_count_7day_avg,case_count,case_count_7day_avg,date_of_interest,death_count,death_count_7day_avg,hosp_count_7day_avg,hospitalized_count,incomplete,mn_all_case_count_7day_avg,mn_case_count,mn_case_count_7day_avg,mn_death_count,mn_death_count_7day_avg,mn_hospitalized_count,mn_hospitalized_count_7day_avg,mn_probable_case_count,mn_probable_case_count_7day_avg,probable_case_count,qn_all_case_count_7day_avg,qn_case_count,qn_case_count_7day_avg,qn_death_count,qn_death_count_7day_avg,qn_hospitalized_count,qn_hospitalized_count_7day_avg,qn_probable_case_count,qn_probable_case_count_7day_avg,si_all_case_count_7day_avg,si_case_count,si_case_count_7day_avg,si_death_count,si_death_count_7day_avg,si_hospitalized_count,si_hospitalized_count_7day_avg,si_probable_case_count,si_probable_case_count_7day_avg"
+# 📥 Optional: Import CSV into Railway Postgres
+if [ -n "$POSTGRES_HOST" ]; then
+    echo "📥 Attempting to import data into Postgres at $POSTGRES_HOST..."
 
-# Create CSV with header
-echo "$HEADERS" > /app/data.csv
-
-# Convert each JSON row into a CSV row with exact matching header order
-jq -r --arg header "$HEADERS" '
-  $header | split(",") as $cols |
-  map([.[ $cols[] ] // "NULL"])[] | @csv
-' /app/data.json >> /app/data.csv
-
-echo "✅ CSV created"
-echo "📊 $(tail -n +2 /app/data.csv | wc -l) rows"
-
-# Generate CREATE TABLE SQL using all TEXT types
-CREATE_COLUMNS=$(echo "$HEADERS" | tr ',' '\n' | awk '{print $0 " TEXT,"}' | sed '$ s/,$//')
-
-cat <<EOF > /app/import.sql
-DROP TABLE IF EXISTS $TABLE_NAME;
-CREATE TABLE $TABLE_NAME (
-$CREATE_COLUMNS
+    # Create SQL script
+    cat <<EOF > /app/import.sql
+CREATE TABLE IF NOT EXISTS covid_data (
+    date_of_interest TEXT,
+    case_count TEXT,
+    probable_case_count TEXT,
+    hospitalized_count TEXT,
+    death_count TEXT,
+    case_count_7day_avg TEXT,
+    all_case_count_7day_avg TEXT,
+    hosp_count_7day_avg TEXT,
+    death_count_7day_avg TEXT,
+    bx_case_count TEXT,
+    bx_probable_case_count TEXT,
+    bx_hospitalized_count TEXT,
+    bx_death_count TEXT,
+    bx_case_count_7day_avg TEXT,
+    bx_probable_case_count_7day_avg TEXT,
+    bx_all_case_count_7day_avg TEXT,
+    bx_hospitalized_count_7day_avg TEXT,
+    bx_death_count_7day_avg TEXT,
+    bk_case_count TEXT,
+    bk_probable_case_count TEXT,
+    bk_hospitalized_count TEXT,
+    bk_death_count TEXT,
+    bk_case_count_7day_avg TEXT,
+    bk_probable_case_count_7day_avg TEXT,
+    bk_all_case_count_7day_avg TEXT,
+    bk_hospitalized_count_7day_avg TEXT,
+    bk_death_count_7day_avg TEXT,
+    mn_case_count TEXT,
+    mn_probable_case_count TEXT,
+    mn_hospitalized_count TEXT,
+    mn_death_count TEXT,
+    mn_case_count_7day_avg TEXT,
+    mn_probable_case_count_7day_avg TEXT,
+    mn_all_case_count_7day_avg TEXT,
+    mn_hospitalized_count_7day_avg TEXT,
+    mn_death_count_7day_avg TEXT,
+    qn_case_count TEXT,
+    qn_probable_case_count TEXT,
+    qn_hospitalized_count TEXT,
+    qn_death_count TEXT,
+    qn_case_count_7day_avg TEXT,
+    qn_probable_case_count_7day_avg TEXT,
+    qn_all_case_count_7day_avg TEXT,
+    qn_hospitalized_count_7day_avg TEXT,
+    qn_death_count_7day_avg TEXT,
+    si_case_count TEXT,
+    si_probable_case_count TEXT,
+    si_hospitalized_count TEXT,
+    si_death_count TEXT,
+    si_probable_case_count_7day_avg TEXT,
+    si_case_count_7day_avg TEXT,
+    si_all_case_count_7day_avg TEXT,
+    si_hospitalized_count_7day_avg TEXT,
+    si_death_count_7day_avg TEXT,
+    incomplete TEXT
 );
-COPY $TABLE_NAME ($HEADERS)
-FROM STDIN WITH CSV HEADER;
+
+COPY covid_data FROM STDIN WITH CSV HEADER;
 EOF
 
-# Import into PostgreSQL
-echo "📥 Importing into Postgres..."
-psql "$DATABASE_URL" -f /app/import.sql < /app/data.csv
 
-echo "✅ Import complete!"
+    # Run SQL import using psql
+    PGPASSWORD=$POSTGRES_PASSWORD psql \
+        -h "$POSTGRES_HOST" \
+        -U "$POSTGRES_USER" \
+        -d "$POSTGRES_DB" \
+        -p "${POSTGRES_PORT:-5432}" \
+        -f /app/import.sql < "$CSV_FILE"
+
+    echo "✅ Data successfully imported to Postgres!"
+else
+    echo "⚠️  No database credentials found. Skipping database import."
+fi
