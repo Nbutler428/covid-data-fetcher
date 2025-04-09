@@ -1,11 +1,12 @@
-FROM alpine:latest
-
-RUN apk add --no-cache curl jq postgresql-client
+FROM python:3.10-slim
 
 WORKDIR /app
 
-COPY fetch_data.sh .
+# Install psycopg2 dependencies
+RUN apt-get update && apt-get install -y gcc libpq-dev && rm -rf /var/lib/apt/lists/*
 
-RUN chmod +x fetch_data.sh
+# Copy and run the script
+COPY run.sh /app/run.sh
+RUN chmod +x /app/run.sh
 
-CMD ["/app/fetch_data.sh"]
+CMD ["./run.sh"]
