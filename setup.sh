@@ -1,11 +1,11 @@
 #!/bin/sh
 
-# Exit on error
+
 set -e
 
 echo "🚀 Setting up the COVID-19 Data Fetcher..."
 
-# Check if Docker is installed
+
 if ! command -v docker &> /dev/null; then
     echo "⚠️  Docker is not installed. Installing Docker..."
     sudo apt update
@@ -17,13 +17,13 @@ else
     echo "✅ Docker is already installed."
 fi
 
-# Ensure Docker is running
+
 if ! sudo systemctl is-active --quiet docker; then
     echo "🚀 Starting Docker service..."
     sudo systemctl start docker
 fi
 
-# Create Docker network if it doesn't exist
+
 if ! docker network ls | grep -q "covid_network"; then
     echo "🚀 Creating Docker network covid_network..."
     docker network create covid_network
@@ -31,7 +31,7 @@ else
     echo "✅ Docker network covid_network already exists."
 fi
 
-# Create project directory if not exists
+
 if [ ! -d "covid_project" ]; then
     echo "📂 Creating project directory..."
     mkdir covid_project
@@ -39,7 +39,7 @@ fi
 
 cd covid_project
 
-# Create .env file if it doesn't exist
+
 if [ ! -f "vars.env" ]; then
     echo "🔧 Creating vars.env file..."
     cat <<EOL > vars.env
@@ -81,7 +81,7 @@ EOL
 
 chmod +x fetch_data.sh
 
-# Create Dockerfile
+
 cat <<EOL > Dockerfile
 FROM alpine:latest
 
