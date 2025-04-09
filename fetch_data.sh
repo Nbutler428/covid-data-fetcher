@@ -6,7 +6,7 @@ START_DATE=${1:-"2020-01-01T00:00:00.000"}
 
 # Required ENV VARS
 if [ -z "$DATABASE_URL" ] || [ -z "$SITE_URL" ] || [ -z "$TABLE_NAME" ]; then
-  echo "❌ Missing environment variables: DATABASE_URL, SITE_URL, TABLE_NAME"
+  echo "❌ Missing required environment variables: DATABASE_URL, SITE_URL, TABLE_NAME"
   exit 1
 fi
 
@@ -25,7 +25,12 @@ CSV_FILE="/app/covid_data.csv"
 echo "📝 Converting JSON to CSV..."
 HEADERS=$(jq -r 'map(keys) | add | unique | join(",")' /app/covid_data.json)
 echo "$HEADERS" > "$CSV_FILE"
-jq -r 'map([.[] // "NULL"])[] | @csv' /app/covid_data.json >> "$CSV_FILE"
+
+jq -r --arg header "$HEADERS" '
+  $header | split(",") as $cols |
+  map([.[ $cols[] ] // "NULL"])[] | @csv
+' /app/covid_data.json >> "$CSV_FILE"
+
 echo "✅ Data saved to covid_data.csv"
 
 echo "📄 CSV headers:"
@@ -36,7 +41,7 @@ tail -n +2 "$CSV_FILE" | wc -l
 
 echo "📐 Creating table matching CSV headers..."
 
-# Generate SQL types — assume TEXT for all
+# Generate CREATE TABLE with all TEXT columns
 CREATE_COLUMNS=$(echo "$HEADERS" | tr ',' '\n' | awk '{print $0 " TEXT,"}' | sed '$ s/,$//')
 
 cat <<EOF > /app/import.sql
